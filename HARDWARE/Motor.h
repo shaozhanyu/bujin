@@ -12,8 +12,8 @@
 #define  ONE_MS_TIME_COUNT_VALUE  (72.0*1000/MOTOR_PWM_ARR)  //1ms时间，PWM由于没有分频，则1ms时间走过PWM输出的脉冲数MOTOR_PWM_ARR的N倍
 #define  MM_PER_STEP              ((1.27/200)/128.0)
 #define  STEP_COUNT_PER_MM        (128.0*200.0/1.27)    //每mm包含的脉冲数，即脉冲当量
-#define  FUYANG_STEP_COUNT_PER_MM        (128.0*200.0/1.5875)    //每mm包含的脉冲数，即脉冲当量
-#define  FUYANG_MM_PER_STEP              ((1.5875/200)/128.0)
+#define  FUYANG_STEP_COUNT_PER_MM        (128.0*200.0/1.27)    //每mm包含的脉冲数，即脉冲当量
+#define  FUYANG_MM_PER_STEP              ((1.27/200)/128.0)
 ////////////////////////////////////////////////////////
 extern  int   WipeMotorFlag ;//期望电机转换为的状态
 extern  float  SetSpeed_ref ;
@@ -35,44 +35,52 @@ extern  int  fangwei_xch_dir ;//方位电机切换方向标志
 /////////////////////////////////////////////////////////////
 //extern  u8 fangwei_daowei_flag;
 //extern  u8 fuyang_daowei_flag;
-extern double gl_currentPos;					//俯仰当前位置
-extern double gl_currentPos1;					//方位当前位置
+extern double fy_currentPos;					//俯仰当前位置
+extern double fw_currentPos;					//方位当前位置
 extern u8 fuyang_yundong_daowei_flag;
 extern u8 fangwei_yundong_daowei_flag;			//方位运动到位标志
-extern int gul_Targettimeout1_temp;				//方位目标时间
-extern int gul_Targettimeout_temp;				//方位目标时间
-extern double last_gl_currentPos;
-extern double last_gl_currentPos1;
-extern double gl_currentPos;
+extern int fw_ms_count_temp;				//方位目标时间
+extern int fy_ms_count_temp;				//方位目标时间
+extern double last_fy_currentPos;
+extern double last_fw_currentPos;
+extern double fy_currentPos;
 extern AMIS30543_CR AMIS30543_CR_SPI1;
 extern AMIS30543_CR AMIS30543_CR_SPI2;
-extern int gul_Targettimeout1_temp;
-extern double gl_currentPos1;
+extern int fw_ms_count_temp;
+extern double fw_currentPos;
 extern u32 guc_timejishi1;
 
 
 
-extern char In_place_flag;						//用于俯仰找零过程的标志
-extern char In_place_flag1;						//用于方位找零过程的标志
+extern char fy_reset_flag;						//用于俯仰找零过程的标志
+extern char fw_reset_flag;						//用于方位找零过程的标志
 extern u8 fuyang_shezhi_guocheng_flag;			//俯仰设置成功过程标志
 extern u8 fangwei_shezhi_guocheng_flag;			//方位设置成功标志
-extern char Init1_first_flag;					//上电复位前的标志
-extern u32 gul_Targettimeout1;					//方位目标时间
-extern u8 gb_SHUN_NI1;							//代表方位电机正转反转或停止
-extern u8 gb_SHUN_NI;
-extern double last_gl_currentPos;				//俯仰上次停止时的位置
-extern double last_gl_currentPos1;				//方位上次停止时的位置
+extern char fw_Init_flag;					//上电复位前的标志
+extern u32 fw_ms_count;					//方位目标时间
+extern u8 fw_dir;							//代表方位电机正转反转或停止
+extern u8 fy_dir;
+extern double last_fy_currentPos;				//俯仰上次停止时的位置
+extern double last_fw_currentPos;				//方位上次停止时的位置
 extern double fangwei_TargetPos;				//方位目标位置
 extern double fuyang_TargetPos;					//俯仰目标位置
 
-extern u32 gul_Targettimeout;
-extern char Init_first_flag;
-
-
-
+extern u32 fy_ms_count;
+extern char fy_Init_flag;
+////////////////////////////////////////////////////
+extern u8 AT24c256_storage[30];	 //要存储的数据
+extern char In_place_flag1;
+extern char In_place_flag;
+extern u8 fangwei_yundong_daowei_flag;
+extern u8 fuyang_yundong_daowei_flag;
+extern int fy_ms_count_temp;
+extern u32 guc_timejishi;
+//////////////////////////////////////////////////
 extern u8 Yuntai_fangwei_shezhi_chenggong_flag; //云台方位设置成功标志
 extern u8 Yuntai_fuyang_shezhi_chenggong_flag;
 extern u8 Yuntai_jiaodushezhi_flag;
+extern short gul_fuyang_jiaodu;
+extern short gul_fangwei_jiaodu;
 /////////////////////////////////////////////////////////////
 #define  MotorTIMPeriod     (float)(150.0/(NowSpeed/200.0))
 #define  MotorHalfTIMPeriod   (float)(MotorTIMPeriod/2.0)

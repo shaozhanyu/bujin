@@ -49,15 +49,17 @@ int fputc(int ch, FILE *f)
 }
 #endif
 
-#if EN_USART1_RX				 //如果使能了接收
+
 								 // 电机到达原点的时候电机记录的值
 short crc_check;				 //计算crc的结果
 short crc_result1;				 //存储的crc值
-extern short gul_fuyang_jiaodu;	 //俯仰角度值
-extern short gul_fangwei_jiaodu; //方位角度值
+
 u8 Res;
 u8 last_Res;
 u8 RS422_receive_str[30]; //接收到的数据
+u8 rx_buf[50];
+long rx_cnt=0;
+long rx_time=0;
 u8 RS232_receive_str[30]; //回复
 u8 RS422_byte_count;
 u8 last_RS422_byte_count;
@@ -74,21 +76,14 @@ u8 Yuntai_fangwei_shezhi_chenggong_flag; //云台设置成功标志,表示上位机设置数据有
 u8 Yuntai_fuyang_shezhi_chenggong_flag;
 double fangwei_TargetPos;		 //方位目标位置
 double fuyang_TargetPos;		 //俯仰目标位置
-short fangwei_Targetjiaodu;		 //方位目标角度
+short fw_TargetDeg;		 //方位目标角度
 double fangwei_Targethudu;		 //方位目标弧度
-short fuyang_Targetjiaodu;		 //俯仰目标角度
+short fy_TargetDeg;		 //俯仰目标角度
 double fuyang_Targethudu;		 //俯仰目标弧度
-extern unsigned char guc_StepM1; //细分数
-extern float gf_MotorStep;		 //电机单步步长
+
 double fangwei_TargetPos_temp;	 //方位目标角度中间值
 double fuyang_TargettPos_temp;	 //俯仰目标角度中间值
-extern u8 AT24c256_storage[30];	 //要存储的数据
-extern char In_place_flag1;
-extern char In_place_flag;
-extern u8 fangwei_yundong_daowei_flag;
-extern u8 fuyang_yundong_daowei_flag;
-extern int gul_Targettimeout_temp;
-extern u32 guc_timejishi;
+
 
 
 void uart_init(u32 bound)
@@ -132,6 +127,7 @@ void uart_init(u32 bound)
 	USART_Cmd(USART1, ENABLE);					   //使能串口1
 }
 
+////////////////////////////////////////////////////////////////
 void USART1_IRQHandler(void) //串口1中断服务程序
 {
 
@@ -143,30 +139,34 @@ void USART1_IRQHandler(void) //串口1中断服务程序
 		if (USART_GetFlagStatus(USART1, USART_FLAG_RXNE) == SET)
 		{
 			Res = USART_ReceiveData(USART1); //读取接收到的数据
+			RS422_receive_str[RS422_byte_count++]=Res;
+			rx_time =0;
 		}
-		if ((Res == 0xc0) && ((last_Res == 0) || (last_Res == 0xC0)))
-		{
-			RS422_byte_count = 0;
-		}
-		else if (Res != 0xc0)
-		{
-			RS422_receive_str[RS422_byte_count] = Res;
-			RS422_byte_count++;
-		}
-		else if ((Res == 0xc0) && (RS422_byte_count != 0) && (RS422_byte_count != 1))
-		{
-			last_RS422_byte_count = RS422_byte_count;
-			RS422_byte_count = 0;
-			RS232_receive_flag = 1;
-			//				  RS232_data_Anal();
-		}
-		last_Res = Res;
+		
+//		if ((Res == 0xc0) && ((last_Res == 0) || (last_Res == 0xC0)))
+//		{
+//			RS422_byte_count = 0;
+//		}
+//		else if (Res != 0xc0)
+//		{
+//			RS422_receive_str[RS422_byte_count] = Res;
+//			RS422_byte_count++;
+//		}
+//		else if ((Res == 0xc0) && (RS422_byte_count != 0) && (RS422_byte_count != 1))
+//		{
+//			last_RS422_byte_count = RS422_byte_count;
+//			RS422_byte_count = 0;
+//			RS232_receive_flag = 1;
+//			//				  RS232_data_Anal();
+//		}
+//		last_Res = Res;
 	}
 #if SYSTEM_SUPPORT_OS //如果SYSTEM_SUPPORT_OS为真，则需要支持OS.
 	OSIntExit();
 #endif
 }
 
+////////////////////////////////////////////////////
 void RS485_Send_Data(u8 *buf, u8 len)
 {
 	uint32_t	t;
@@ -178,7 +178,7 @@ void RS485_Send_Data(u8 *buf, u8 len)
 	}
 	
 }
-
+//////////////////////////////////////////////////////////////
 u16 cal_crc(unsigned char *ptr, unsigned char len)
 {
 	unsigned char i;
@@ -207,6 +207,7 @@ u16 cal_crc(unsigned char *ptr, unsigned char len)
 	return (crc);
 }
 
+///////////////////////上位机命令解析/////////////////////////////////////////
 void RS232_data_Anal()
 {
 	u8 flag = 0;
@@ -217,13 +218,13 @@ void RS232_data_Anal()
 	{
 		for (i = 0; i < last_RS422_byte_count; i++)
 		{
-			if ((RS422_receive_str[i] == 0xdb) && (RS422_receive_str[i + 1] == 0xdc))
+			if ((rx_buf[i] == 0xdb) && (rx_buf[i + 1] == 0xdc))//判断中间数据有0XC0的转义。0xdb和0xdc联合表示一个0xc0
 			{
 				i++;
 				RS232_receive_str[t] = 0xc0;
 				t++;
 			}
-			else if ((RS422_receive_str[i] == 0xdb) && (RS422_receive_str[i + 1] == 0xdd))
+			else if ((rx_buf[i] == 0xdb) && (rx_buf[i + 1] == 0xdd))
 			{
 				i++;
 				RS232_receive_str[t] = 0xdb;
@@ -231,11 +232,11 @@ void RS232_data_Anal()
 			}
 			else
 			{
-				RS232_receive_str[t] = RS422_receive_str[i];
+				RS232_receive_str[t] = rx_buf[i];
 				t++;
 			}
 		}
-		crc_check = cal_crc(RS232_receive_str, (t - 2)); //RS232_receive_str数组是完全没有转义之前的数组
+		crc_check = cal_crc(RS232_receive_str, (t - 2)); 
 		crc_result1 = (short)((RS232_receive_str[t - 2] << 8) | RS232_receive_str[t - 1]);
 
 		if (crc_check == crc_result1)
@@ -247,159 +248,175 @@ void RS232_data_Anal()
 			flag = 0;
 		}
 	}
-	if (flag == 1)
+	if (flag == 1)//命令解析成功
 	{
 		flag=0;
-		if (RS422_receive_str[0] == 0x01)
+
+		switch(RS232_receive_str[0])
 		{
-			Yuntai_ID_flag = 1;
+			case 1:Yuntai_ID_flag = 1;
+			break;
+			case 2:Yuntai_zhuangtai_flag = 1;
+			break;
+			case 3:
+				Yuntai_kongzhi_flag = 1;
+				if (RS232_receive_str[3] == 0x01)
+				{
+					Yuntai_fuwei_flag = 1;
+				}
+				if (RS232_receive_str[3] == 0x00)
+				{
+					if((0==fangwei_xch_dir) &&(0==fuyang_xch_dir) )
+						Yuntai_tingzhi_flag = 1;
+				}
+			break;
+			case 4:
+				if ( (fy_reset_flag == 1) && (fw_reset_flag == 1)) //判断当前不是复位中
+				{
+					
+					Yuntai_jiaodushezhi_flag = 1; //标志着云台接收到方位俯仰设置角度标志
+					fy_TargetDeg = (short)(RS232_receive_str[6] << 8 | RS232_receive_str[7]);
+					Yuntai_yingdafangshi_flag = RS232_receive_str[8];
+					fw_TargetDeg = (short)(RS232_receive_str[4] << 8 | RS232_receive_str[5]);
+					if ((fw_TargetDeg >= -1500) && (fw_TargetDeg <= 1500))
+					{
+						Yuntai_fangwei_shezhi_chenggong_flag = 1;
+					}
+					else
+					{
+						Yuntai_fangwei_shezhi_chenggong_flag = 0;
+					}
+					if ((fy_TargetDeg >= -300) && (fy_TargetDeg <= 500))
+					{
+						Yuntai_fuyang_shezhi_chenggong_flag = 1;
+					}
+					else
+					{
+						Yuntai_fuyang_shezhi_chenggong_flag = 0;
+					}
+
+					if ((Yuntai_fangwei_shezhi_chenggong_flag == 1) && (Yuntai_fuyang_shezhi_chenggong_flag == 1))//判断两个角度设置都合法
+					{
+						calc_deg_fun(fw_TargetDeg , fy_TargetDeg , t);//根据设置的角度计算运动长度
+
+					}
+					else if ((Yuntai_fangwei_shezhi_chenggong_flag == 0) || (Yuntai_fuyang_shezhi_chenggong_flag == 0))
+					{
+						fy_TargetDeg = gul_fuyang_jiaodu;
+						fw_TargetDeg = gul_fangwei_jiaodu;
+					}
+					
+				}
+			break;
+			case 5:Yuntai_chushishezhi_flag = 1;
+			break;
+			default:
+			break;
+
 		}
-		if (RS422_receive_str[0] == 0x02)
+				
+	}
+	
+}
+
+////////////////////////根据角度计算运动长度/////////////////////////////////////////////
+int  calc_deg_fun( short fw_deg , short fy_deg , int len)
+{
+	int i;
+	for (i = 0; i < len; i++)
+	{
+		AT24c256_storage[i] = RS232_receive_str[i];
+	}
+	///////////////////从俯仰角度计算推杆电机运动终点长度/////////////////////
+	fangwei_Targethudu = (double)((1500 - fw_TargetDeg + 4389.97574) * 3.14159265 / 18000); //计算弧度
+	fangwei_TargetPos_temp = cos(fangwei_Targethudu);
+	fangwei_TargetPos_temp = (double)(sqrt(57.2713 * 57.2713 + 120.6785 * 120.6785 - fangwei_TargetPos_temp * 2 * 57.2713 * 120.6785) - 87.625);
+	if ((fangwei_TargetPos_temp >= 0) && (fangwei_TargetPos_temp <= 38))//要求的新长度位置
+	{
+		fangwei_TargetPos = fangwei_TargetPos_temp;//方位推杆实际需要伸出绝对长度值
+	}
+	fuyang_Targethudu = 0;
+	fuyang_Targethudu = (double)((fy_TargetDeg + 2566.769) * 3.14159265 / 18000);//换算弧度
+
+	fuyang_TargettPos_temp = cos(fuyang_Targethudu);
+	fuyang_TargettPos_temp = (double)(sqrt((282.8784 * 282.8784) + (219.7559 * 219.7559) - (2 * fuyang_TargettPos_temp * 282.8784 * 219.7559) - 57.5 * 57.5) - 99.725);
+	if ((fuyang_TargettPos_temp >= 0) && (fuyang_TargettPos_temp <= 38))//判断推杆终点长度在允许范围内
+	{
+		fuyang_TargetPos = fuyang_TargettPos_temp;//俯仰推杆实际需要伸出绝对长度值
+	}
+	if(fuyang_TargetPos - fy_currentPos >= 0.002)//判断是正向运动
+	{
+		if(fy_dir ==0 )//判断当前状态是反转非静止中，本次需要正转，说明需要急速换向
 		{
-			Yuntai_zhuangtai_flag = 1;
-		}
-		if (RS422_receive_str[0] == 0x03)
-		{
-			Yuntai_kongzhi_flag = 1;
-			if (RS422_receive_str[3] == 0x01)
+			if( fy_currentPos > 5.0)//判断反向减速停止距离足够，否则因为减速时间固定，一旦没有距离会撞机
 			{
-				Yuntai_fuwei_flag = 1;
+				fuyang_xch_dir =2;//设置换向标志2
+				Yuntai_fuyang_shezhi_chenggong_flag=2;//修改设置角度标志，暂时转入减速停止，先不执行实际角度运动
+				Yuntai_jiaodushezhi_flag =3;
 			}
-			if (RS422_receive_str[3] == 0x00)
+			else
 			{
-				if((0==fangwei_xch_dir) &&(0==fuyang_xch_dir) )
-					Yuntai_tingzhi_flag = 1;
+				Yuntai_fuyang_shezhi_chenggong_flag=0;								
 			}
 		}
-		if ((RS422_receive_str[0] == 0x04) && (In_place_flag1 == 1) && (In_place_flag == 1)) //&& (gb_SHUN_NI == 2) && (gb_SHUN_NI1 == 2))
+	}
+	else  if(fuyang_TargetPos - fy_currentPos < -0.002)//判断反向运动
+	{
+		if(fy_dir ==1 )//判断当前状态是正转非静止中，本次需要反转，说明需要急速换向
 		{
-			Yuntai_jiaodushezhi_flag = 1; //标志着云台接收到方位俯仰设置角度标志
-			fuyang_Targetjiaodu = (short)(RS232_receive_str[6] << 8 | RS232_receive_str[7]);
-			Yuntai_yingdafangshi_flag = RS232_receive_str[8];
-			fangwei_Targetjiaodu = (short)(RS232_receive_str[4] << 8 | RS232_receive_str[5]);
-			if ((fangwei_Targetjiaodu >= -1500) && (fangwei_Targetjiaodu <= 1500))
+			if( fy_currentPos < 33)//判断正向减速停止距离足够，否则因为减速时间固定，一旦没有距离会撞机
 			{
-				Yuntai_fangwei_shezhi_chenggong_flag = 1;
+				fuyang_xch_dir =2;//设置换向标志2
+			
+				Yuntai_fuyang_shezhi_chenggong_flag=2;//修改设置角度标志，暂时转入减速停止，先不执行实际角度运动
+				Yuntai_jiaodushezhi_flag =3;
+			}
+			else
+			{
+				Yuntai_fuyang_shezhi_chenggong_flag=0;								
+			}
+		}
+	}	
+	
+	if(fangwei_TargetPos - fw_currentPos >= 0.002)//判断是正向运动
+	{
+		if(fw_dir ==0 )//判断当前状态是反转非静止中，本次需要正转，说明需要急速换向
+		{
+			if( fw_currentPos < 25.0 )//判断反向减速停止距离足够，否则因为减速时间固定，一旦没有距离会撞机
+			{
+				Yuntai_fangwei_shezhi_chenggong_flag=2;//修改设置角度标志，暂时转入减速停止，先不执行实际角度运动
+				Yuntai_jiaodushezhi_flag =4;
+				fangwei_xch_dir =2;//设置换向标志2
 			}
 			else
 			{
 				Yuntai_fangwei_shezhi_chenggong_flag = 0;
 			}
-			if ((fuyang_Targetjiaodu >= -300) && (fuyang_Targetjiaodu <= 500))
+			
+		}
+	}
+	else  if(fangwei_TargetPos - fw_currentPos < -0.002)//判断反向运动
+	{
+		if(fw_dir ==1 )//判断当前状态是正转非静止中，本次需要反转，说明需要急速换向
+		{
+			if( fw_currentPos >5.0)//判断正向减速停止距离足够，否则因为减速时间固定，一旦没有距离会撞机
 			{
-				Yuntai_fuyang_shezhi_chenggong_flag = 1;
+				fangwei_xch_dir =2;//设置换向标志2
+				Yuntai_fangwei_shezhi_chenggong_flag=2;//修改设置角度标志，暂时转入减速停止，先不执行实际角度运动
+				Yuntai_jiaodushezhi_flag =4;
 			}
 			else
 			{
-				Yuntai_fuyang_shezhi_chenggong_flag = 0;
-			}
-			if ((Yuntai_fangwei_shezhi_chenggong_flag == 1) && (Yuntai_fuyang_shezhi_chenggong_flag == 1))//判断两个角度设置都合法
-			{
-				for (i = 0; i < t; i++)
-				{
-					AT24c256_storage[i] = RS232_receive_str[i];
-				}
-				
-				fangwei_Targethudu = (double)((1500 - fangwei_Targetjiaodu + 4389.97574) * 3.14159265 / 18000); //计算弧度
-				fangwei_TargetPos_temp = cos(fangwei_Targethudu);
-				fangwei_TargetPos_temp = (double)(sqrt(57.2713 * 57.2713 + 120.6785 * 120.6785 - fangwei_TargetPos_temp * 2 * 57.2713 * 120.6785) - 87.625);
-				if ((fangwei_TargetPos_temp >= 0) && (fangwei_TargetPos_temp <= 38))//要求的新长度位置
-				{
-					fangwei_TargetPos = fangwei_TargetPos_temp;//推杆实际需要伸出绝对长度值
-				}
-				fuyang_Targethudu = 0;
-				fuyang_Targethudu = (double)((fuyang_Targetjiaodu + 2162.1881+339.81465) * 3.14159265 / 18000);
-
-				fuyang_TargettPos_temp = cos(fuyang_Targethudu);
-				fuyang_TargettPos_temp = (double)(sqrt(553.5480 * 553.5480 + 409.1304 * 409.1304 - fuyang_TargettPos_temp * 2 * 553.5480 * 409.1304) - 229.625);
-				if ((fuyang_TargettPos_temp >= 0) && (fuyang_TargettPos_temp <= 58))//判断坐标在允许范围内
-				{
-					fuyang_TargetPos = fuyang_TargettPos_temp;
-				}
-				if(fuyang_TargetPos - gl_currentPos >= 0.002)//判断是正向运动
-				{
-						if(gb_SHUN_NI ==0 )//判断当前状态是反转非静止中，本次需要正转，说明需要急速换向
-						{
-							if( gl_currentPos > 5.0)//判断反向减速停止距离足够，否则因为减速时间固定，一旦没有距离会撞机
-							{
-								fuyang_xch_dir =2;//设置换向标志2
-								Yuntai_fuyang_shezhi_chenggong_flag=2;//修改设置角度标志，暂时转入减速停止，先不执行实际角度运动
-								Yuntai_jiaodushezhi_flag =3;
-							}
-							else
-							{
-								Yuntai_fuyang_shezhi_chenggong_flag=0;								
-							}
-						}
-				}
-				else  if(fuyang_TargetPos - gl_currentPos < -0.002)//判断反向运动
-				{
-						if(gb_SHUN_NI ==1 )//判断当前状态是正转非静止中，本次需要反转，说明需要急速换向
-						{
-							if( gl_currentPos < 33)//判断正向减速停止距离足够，否则因为减速时间固定，一旦没有距离会撞机
-							{
-								fuyang_xch_dir =2;//设置换向标志2
-							
-								Yuntai_fuyang_shezhi_chenggong_flag=2;//修改设置角度标志，暂时转入减速停止，先不执行实际角度运动
-								Yuntai_jiaodushezhi_flag =3;
-							}
-							else
-							{
-								Yuntai_fuyang_shezhi_chenggong_flag=0;								
-							}
-						}
-				}	
-				
-				if(fangwei_TargetPos - gl_currentPos1 >= 0.002)//判断是正向运动
-				{
-						if(gb_SHUN_NI1 ==0 )//判断当前状态是反转非静止中，本次需要正转，说明需要急速换向
-						{
-							if( gl_currentPos1 < 25.0 )//判断反向减速停止距离足够，否则因为减速时间固定，一旦没有距离会撞机
-							{
-								Yuntai_fangwei_shezhi_chenggong_flag=2;//修改设置角度标志，暂时转入减速停止，先不执行实际角度运动
-								Yuntai_jiaodushezhi_flag =4;
-								fangwei_xch_dir =2;//设置换向标志2
-							}
-							else
-							{
-								Yuntai_fangwei_shezhi_chenggong_flag = 0;
-							}
-							
-						}
-				}
-				else  if(fangwei_TargetPos - gl_currentPos1 < -0.002)//判断反向运动
-				{
-						if(gb_SHUN_NI1 ==1 )//判断当前状态是正转非静止中，本次需要反转，说明需要急速换向
-						{
-							if( gl_currentPos1 >5.0)//判断正向减速停止距离足够，否则因为减速时间固定，一旦没有距离会撞机
-							{
-								fangwei_xch_dir =2;//设置换向标志2
-								Yuntai_fangwei_shezhi_chenggong_flag=2;//修改设置角度标志，暂时转入减速停止，先不执行实际角度运动
-								Yuntai_jiaodushezhi_flag =4;
-							}
-							else
-							{
-								Yuntai_fangwei_shezhi_chenggong_flag=0;
-							}
-						}
-				}	
-				
-			}
-			else if ((Yuntai_fangwei_shezhi_chenggong_flag == 0) || (Yuntai_fuyang_shezhi_chenggong_flag == 0))
-			{
-				fuyang_Targetjiaodu = gul_fuyang_jiaodu;
-				fangwei_Targetjiaodu = gul_fangwei_jiaodu;
+				Yuntai_fangwei_shezhi_chenggong_flag=0;
 			}
 		}
-		if (RS422_receive_str[0] == 0x05)
-		{
-			Yuntai_chushishezhi_flag = 1;
-		}
-		
-	}
+	}	
+	
+	return 0;
 	
 }
 
+////////////////////////发送给上位机数据/////////////////////////////////////////////
 void RS422_Send_Data(u8 *buf, u8 len)
 {
 	u8 t;
@@ -414,4 +431,7 @@ void RS422_Send_Data(u8 *buf, u8 len)
 	FORCEON = 0;
 }
 
-#endif
+
+
+
+
